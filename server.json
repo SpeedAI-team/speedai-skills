@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.SpeedAI-team/speedai-jiangai",
   "title": "SpeedAI",
-  "description": "Lower AIGC scores, reduce similarity and check the AI rate of Chinese theses (CNKI, VIP, Wanfang).",
-  "version": "1.2.0",
+  "description": "SpeedAI AI Rate Reducer & AIGC Detector: lower AIGC scores and check the AI rate of Chinese theses.",
+  "version": "1.2.1",
   "websiteUrl": "https://speedai.com/open",
   "repository": { "url": "https://github.com/SpeedAI-team/speedai-skills", "source": "github" },
   "remotes": [

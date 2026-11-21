@@ -1,4 +1,4 @@
-# SpeedAI 降AI率技能与 MCP（speedai-jiangai）
+# SpeedAI 降AI率与AIGC检测：技能与 MCP（speedai-jiangai）
 
 [SpeedAI](https://speedai.com) 的官方技能（Skill）和 MCP 连接器：在 AI 助手里给论文**降 AIGC 率、降重、润色、做 AIGC 检测**，支持整篇 Word 文档和 AIGC 检测报告（PDF），检测口径覆盖知网、维普、万方、格子达、大雅、Turnitin、GPTZero。
 
@@ -14,7 +14,7 @@
 把这句话发给你的 AI 助手，它会自己装好：
 
 ```text
-帮我安装 SpeedAI 降AI率技能，按 https://speedai.com/skill/install.txt 的步骤操作
+帮我安装 SpeedAI 降AI率与AIGC检测技能，按 https://speedai.com/skill/install.txt 的步骤操作
 ```
 
 适用于能运行命令的助手。安装文件从 speedai.com 下载，国内网络也能顺利安装。
@@ -53,7 +53,7 @@ Claude 桌面版：「插件（Plugins）→ 添加（Add）→ 添加插件市�
 npx skills add https://github.com/SpeedAI-team/speedai-skills
 ```
 
-也可以对 AI 助手说：「从 https://github.com/SpeedAI-team/speedai-skills 安装 SpeedAI 降AI率技能」。
+也可以对 AI 助手说：「从 https://github.com/SpeedAI-team/speedai-skills 安装 SpeedAI 降AI率与AIGC检测技能」。
 
 ### WorkBuddy 连接器配置
 
@@ -102,7 +102,7 @@ Key 保存在 `~/.speedai/credentials.json`（仅本人可读），也可以用�
 
 Official SpeedAI skill and MCP server for lowering AIGC (AI-generated content) scores, reducing similarity, polishing and checking the AI rate of Chinese academic writing, including whole Word documents and AIGC detection reports. Same models, pricing and credits as speedai.com.
 
-- Install the skill: `npx skills add SpeedAI-team/speedai-skills`, or tell your agent: *"Install the SpeedAI JiangAI skill by following https://speedai.com/skill/install.txt"*
+- Install the skill: `npx skills add SpeedAI-team/speedai-skills`, or tell your agent: *"Install the SpeedAI AI Rate Reducer & AIGC Detector skill by following https://speedai.com/skill/install.txt"*
 - Claude Code plugin (skill + MCP): `/plugin marketplace add SpeedAI-team/speedai-skills`, then `/plugin install speedai-jiangai@speedai`
 - Remote MCP: `https://api.speedai.com/mcp` (OAuth or `Authorization: Bearer <API key>`); local: `npx -y speedai-cn-mcp`
 - API keys: <https://speedai.com/open/console/keys> · Docs: <https://speedai.com/open/docs>

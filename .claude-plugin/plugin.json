@@ -1,7 +1,7 @@
 {
   "name": "speedai-jiangai",
-  "description": "SpeedAI 降AI率（降AIGC）、降重、润色与 AIGC 检测：技能 + 远程 MCP 连接器（https://speedai.com/open）",
-  "version": "1.2.0",
+  "description": "SpeedAI 降AI率与AIGC检测：论文降 AIGC、降重、润色与 AIGC 检测，技能 + 远程 MCP 连接器（https://speedai.com/open）",
+  "version": "1.2.1",
   "author": {
     "name": "SpeedAI",
     "url": "https://speedai.com"

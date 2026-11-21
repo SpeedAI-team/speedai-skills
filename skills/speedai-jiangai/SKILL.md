@@ -1,21 +1,19 @@
 ---
 name: speedai-jiangai
-display_name: SpeedAI 降AI率（降AIGC）
-display_name_en: SpeedAI JiangAI (AI Rate Reducer)
+display_name: SpeedAI 降AI率与AIGC检测
+display_name_en: SpeedAI AI Rate Reducer & AIGC Detector
 description: 论文降 AI 率（降 AIGC 率）、降重、润色和 AIGC 检测（知网 / 维普 / 万方 / 格子达等），支持整篇 Word 文档和 AIGC 检测报告（PDF）。当用户提到降 AI、降 AIGC、AI 率太高、AIGC 检测没过、降重、查重率高、查 AI 率、去 AI 味、润色论文、出检测报告时使用。可调用 SpeedAI 连接器（MCP 工具）、SpeedAI 开放 API（SPEEDAI_API_KEY），两者都没有时按内置清单人工修改。
 description_zh: 用 SpeedAI 给论文降 AI 率（降 AIGC）、降重、润色，并检测 AI 率
 description_en: Lower AIGC scores, reduce similarity, polish and check the AI rate of Chinese theses with SpeedAI
 examples_zh:
   - "把这段话降一下知网 AIGC 率"
   - "检测这段文字的 AI 率，按维普的标准"
-  - "这段查重率太高了，帮我降重"
   - "把这篇 Word 论文按知网口径降 AIGC"
 examples_en:
   - "Lower the CNKI AIGC score of this paragraph"
   - "Check the AI rate of this text using the VIP standard"
-  - "Reduce the similarity of this paragraph"
   - "Lower the AIGC score of this Word thesis"
-version: 1.2.0
+version: 1.2.1
 author: SpeedAI
 ---
 
@@ -25,7 +23,7 @@ author: SpeedAI
 
 ## 选择调用方式（按顺序）
 
-1. **已连接 SpeedAI 连接器 / MCP**（能看到 `humanize_text`、`detect_aigc`、`humanize_document`、`detect_document` 等工具）：直接调用工具。整篇文档用 `humanize_document` → `get_document`（先 `start: false` 估价，用户同意后 `start_document`），检测报告用 `detect_document` → `get_detect_report`。
+1. **已连接 SpeedAI 连接器 / MCP**（能看到 `humanize_text`、`detect_aigc`、`humanize_document`、`detect_document` 等工具）：直接调用工具。整篇文档用 `humanize_document` → `get_document`（先 `start: false` 估价，用户同意后 `start_document`），检测报告用 `detect_document` → `get_detect_report`。有的应用会给工具名加连接器前缀（如 `mcp_…_detect_aigc`），名字过长时只在工具说明里写原名（`original tool: …`），按原名识别即可。在科搭 Codar 里，本插件自带连接器，直接使用当前登录的 SpeedAI 账号，不需要 API Key；看不到这些工具或提示登录失效时，请用户重新登录科搭的 SpeedAI 账号，不要让用户去创建 API Key。
 2. **已保存 API Key**（`~/.speedai/credentials.json`，或环境变量 `SPEEDAI_API_KEY`）：运行本技能自带的脚本（只用 Python 标准库，输出 JSON）。脚本提示「还没有连接 SpeedAI 账号」时，请用户在 https://speedai.com/open/console/keys 创建 Key，并在自己的终端运行 `python3 scripts/speedai.py set-key` 粘贴保存。
    ```bash
    python3 scripts/speedai.py detect   --platform zhiwang < 段落.txt   # 分段 AIGC 检测

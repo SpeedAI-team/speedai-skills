@@ -5,8 +5,8 @@
     "url": "https://speedai.com"
   },
   "metadata": {
-    "description": "SpeedAI 官方插件：降AI率（speedai-jiangai）",
-    "version": "1.2.0"
+    "description": "SpeedAI 官方插件：降AI率与AIGC检测（speedai-jiangai）",
+    "version": "1.2.1"
   },
   "plugins": [
     {
