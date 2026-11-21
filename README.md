@@ -31,7 +31,7 @@
 
 | 应用 | 安装技能 | 连接 MCP |
 |---|---|---|
-| Codex | 一句话安装，或 `npx skills add SpeedAI-team/speedai-skills` | `~/.codex/config.toml` 加 `[mcp_servers.speedai]` |
+| Codex | 「插件 → 添加 → 添加插件市场」填 `SpeedAI-team/speedai-skills`，安装 `SpeedAI 降AI率与AIGC检测`（技能 + 连接器一起装） | 同一个插件，登录 speedai.com 授权；或「添加 MCP 服务器 → 流式 HTTP」填 `https://api.speedai.com/mcp` |
 | Claude Code | 一句话安装，或 `/plugin marketplace add SpeedAI-team/speedai-skills` 后 `/plugin install speedai-jiangai@speedai`（技能 + 连接器一起装） | `claude mcp add --transport http speedai https://api.speedai.com/mcp` |
 | pi | 一句话安装，或 `npx skills add SpeedAI-team/speedai-skills` | — |
 | Cursor | 一句话安装，或 `npx skills add SpeedAI-team/speedai-skills` | 「Settings → MCP」添加 `https://api.speedai.com/mcp` |
@@ -47,6 +47,15 @@
 ```
 
 Claude 桌面版：「插件（Plugins）→ 添加（Add）→ 添加插件市场」，粘贴本仓库链接，再搜索 `speedai-jiangai` 安装。
+
+```bash
+# Codex（App、IDE 插件、CLI 共用；技能 + 连接器）
+codex plugin marketplace add SpeedAI-team/speedai-skills
+codex plugin add speedai-jiangai@speedai
+codex mcp login speedai-jiangai   # 浏览器登录 speedai.com 并点「允许」
+```
+
+Codex App：左侧「插件」→ 右上角「添加」→「添加插件市场」，来源填 `SpeedAI-team/speedai-skills`，再安装「SpeedAI 降AI率与AIGC检测」。
 
 ```bash
 # Codex、Cursor、pi 等
@@ -96,6 +105,7 @@ python3 ~/.agents/skills/speedai-jiangai/scripts/speedai.py login --wait   # 等
 |---|---|
 | `skills/speedai-jiangai/` | 技能：`SKILL.md`、`scripts/speedai.py`（只用 Python 标准库）、`references/platforms.md` |
 | `.claude-plugin/` | Claude Code 插件与插件市场定义 |
+| `.codex-plugin/`、`.agents/plugins/` | Codex 插件与插件市场定义 |
 | `.mcp.json` | 插件自带的远程 MCP 连接器 |
 | `server.json` | [MCP Registry](https://registry.modelcontextprotocol.io) 登记信息 |
 
@@ -107,6 +117,7 @@ Official SpeedAI skill and MCP server for lowering AIGC (AI-generated content) s
 
 - Install the skill: `npx skills add SpeedAI-team/speedai-skills`, or tell your agent: *"Install the SpeedAI AI Rate Reducer & AIGC Detector skill by following https://speedai.com/skill/install.txt"*
 - Claude Code plugin (skill + MCP): `/plugin marketplace add SpeedAI-team/speedai-skills`, then `/plugin install speedai-jiangai@speedai`
+- Codex plugin (skill + MCP): `codex plugin marketplace add SpeedAI-team/speedai-skills`, then `codex plugin add speedai-jiangai@speedai` (or Plugins → Add → Add plugin marketplace in the Codex app)
 - Remote MCP: `https://api.speedai.com/mcp` (OAuth or `Authorization: Bearer <API key>`); local: `npx -y speedai-cn-mcp`
 - Sign in: the skill runs `speedai.py login`, which opens speedai.com in the browser; click Allow and you are connected (no key to copy). API keys are also supported: <https://speedai.com/open/console/keys> · Docs: <https://speedai.com/open/docs>
 

@@ -1,0 +1,37 @@
+{
+  "name": "speedai-jiangai",
+  "version": "1.3.0",
+  "description": "SpeedAI 降AI率与AIGC检测：论文降 AIGC、降重、润色与 AIGC 检测，技能 + SpeedAI 连接器（用 speedai.com 账号授权，不用复制 Key）",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "author": {
+    "name": "SpeedAI",
+    "url": "https://speedai.com"
+  },
+  "homepage": "https://speedai.com/open",
+  "repository": "https://github.com/SpeedAI-team/speedai-skills",
+  "license": "MIT",
+  "keywords": [
+    "降AI率",
+    "降AIGC",
+    "降重",
+    "AIGC检测",
+    "知网",
+    "维普",
+    "humanizer",
+    "mcp"
+  ],
+  "interface": {
+    "displayName": "SpeedAI 降AI率与AIGC检测",
+    "shortDescription": "论文降 AI 率（降 AIGC）、降重、润色和 AIGC 检测",
+    "longDescription": "按知网、维普、万方、格子达、Turnitin 等平台口径给论文降 AIGC 率、降重和润色，并检测 AI 率；支持整篇 Word 文档和 AIGC 检测报告（PDF）。安装后用 speedai.com 账号授权即可，扣费与网页一致、积分通用。",
+    "developerName": "SpeedAI",
+    "category": "Productivity",
+    "defaultPrompt": [
+      "把这段话降一下知网 AIGC 率"
+    ],
+    "websiteURL": "https://speedai.com/open",
+    "supportURL": "https://speedai.com/open/docs",
+    "brandColor": "#6366F1"
+  }
+}
