@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.SpeedAI-team/speedai-jiangai",
+  "title": "SpeedAI",
+  "description": "Lower AIGC scores, reduce similarity and check the AI rate of Chinese theses (CNKI, VIP, Wanfang).",
+  "version": "1.2.0",
+  "websiteUrl": "https://speedai.com/open",
+  "repository": { "url": "https://github.com/SpeedAI-team/speedai-skills", "source": "github" },
+  "remotes": [
+    { "type": "streamable-http", "url": "https://api.speedai.com/mcp" }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "speedai-cn-mcp",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "SPEEDAI_API_KEY",
+          "description": "SpeedAI API Key (sa_live_...), create one at https://speedai.com/open/console/keys",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

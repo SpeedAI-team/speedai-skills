@@ -1,0 +1,23 @@
+{
+  "name": "speedai-jiangai",
+  "description": "SpeedAI 降AI率（降AIGC）、降重、润色与 AIGC 检测：技能 + 远程 MCP 连接器（https://speedai.com/open）",
+  "version": "1.2.0",
+  "author": {
+    "name": "SpeedAI",
+    "url": "https://speedai.com"
+  },
+  "homepage": "https://speedai.com/open",
+  "repository": "https://github.com/SpeedAI-team/speedai-skills",
+  "license": "MIT",
+  "keywords": [
+    "降AI率",
+    "jiangai",
+    "aigc",
+    "humanizer",
+    "降AIGC",
+    "降重",
+    "知网",
+    "维普",
+    "mcp"
+  ]
+}
