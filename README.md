@@ -24,7 +24,7 @@
 | 应用 | 安装技能 | 连接 MCP |
 |---|---|---|
 | [科搭 Codar](https://speedai.com/codar) | 开箱即用：已内置，登录科搭即可用 | 已内置，不用填 Key |
-| WorkBuddy | 一句话安装；或放到 `~/.workbuddy/skills` | 「连接器 → 添加自定义连接器」，支持 OAuth 一键连接 |
+| WorkBuddy | 一句话安装；或放到 `~/.workbuddy/skills` | 「连接器 → + 自定义连接器」会打开 `~/.workbuddy/mcp.json`，加入下方配置 |
 | 豆包工作 | 下载 [技能包](https://speedai.com/downloads/speedai-jiangai-skill.zip) 发给豆包，说「帮我安装这个技能」；或「插件·技能·伙伴 → 技能 → + 添加 → 上传技能」 | 「插件·技能·伙伴 → 新建 → 新建自定义连接器」 |
 
 ### 海外
@@ -38,6 +38,38 @@
 
 每个客户端的完整 MCP 配置见 [MCP 接入文档](https://speedai.com/open/docs/mcp)。
 
+### 通过 GitHub 链接安装
+
+```text
+# Claude Code（技能 + 连接器）
+/plugin marketplace add https://github.com/SpeedAI-team/speedai-skills
+/plugin install speedai-jiangai@speedai
+```
+
+Claude 桌面版：「插件（Plugins）→ 添加（Add）→ 添加插件市场」，粘贴本仓库链接，再搜索 `speedai-jiangai` 安装。
+
+```bash
+# Codex、Cursor、pi 等
+npx skills add https://github.com/SpeedAI-team/speedai-skills
+```
+
+也可以对 AI 助手说：「从 https://github.com/SpeedAI-team/speedai-skills 安装 SpeedAI 降AI率技能」。
+
+### WorkBuddy 连接器配置
+
+WorkBuddy 的自定义连接器是配置文件，没有填地址的输入框。在「连接器」点「+ 自定义连接器」，在打开的 `~/.workbuddy/mcp.json` 的 `mcpServers` 里加入：
+
+```json
+"speedai": {
+  "type": "streamableHttp",
+  "url": "https://api.speedai.com/mcp",
+  "headers": { "Authorization": "Bearer <你的 API Key>" },
+  "timeout": 600000
+}
+```
+
+保存后回到连接器列表确认已启用。
+
 ## 连接账号
 
 技能脚本需要 API Key：在 <https://speedai.com/open/console/keys> 创建，然后在终端运行并粘贴（输入不显示）：
@@ -46,7 +78,7 @@
 python3 ~/.agents/skills/speedai-jiangai/scripts/speedai.py set-key
 ```
 
-Key 保存在 `~/.speedai/credentials.json`（仅本人可读），也可以用环境变量 `SPEEDAI_API_KEY`。通过 MCP 连接器使用时，支持 OAuth 的应用（Claude、WorkBuddy 等）用 speedai.com 账号授权即可，不需要 Key。
+Key 保存在 `~/.speedai/credentials.json`（仅本人可读），也可以用环境变量 `SPEEDAI_API_KEY`。通过 MCP 连接器使用时，支持 OAuth 的应用（Claude、Claude Code 等）用 speedai.com 账号授权即可，不需要 Key。
 
 ## 用法示例
 
