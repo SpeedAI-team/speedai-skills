@@ -22,11 +22,16 @@
   python3 speedai.py recharge-status ORDER_ID [--wait]  # 查询充值订单
 
 文本从 FILE 或标准输入读取；超过单次上限（1,000 字）时按段落自动切块、依次处理后拼回。
-  python3 speedai.py set-key                            # 保存 API Key 到本机（~/.speedai/credentials.json，仅本人可读）
-        Key 从标准输入读取（终端里会提示粘贴，不回显）；保存前先验证
 
-API Key 依次从环境变量 SPEEDAI_API_KEY、~/.speedai/credentials.json 读取（Key 在 https://speedai.com/open/console/keys 创建）；
-SPEEDAI_API_BASE 可覆盖接口地址。
+连接账号（推荐 login，不用复制 Key）：
+  python3 speedai.py login                              # 打开浏览器登录 speedai.com 并点「允许」；立即返回登录链接
+  python3 speedai.py login --wait [SECONDS]             # 等用户点完「允许」（默认最多 120 秒，可重复运行）
+  python3 speedai.py login --foreground                 # 同一个进程里等待回调（后台进程会被结束的环境用这个）
+  python3 speedai.py logout                             # 退出登录并撤销授权
+  python3 speedai.py set-key                            # 备选：保存 API Key（从标准输入读取，不回显；保存前先验证）
+
+凭证依次从环境变量 SPEEDAI_API_KEY、~/.speedai/credentials.json（login / set-key 写入，仅本人可读）读取；
+登录令牌过期会自动刷新。SPEEDAI_API_BASE 可覆盖接口地址。
 结果以 JSON 输出到标准输出；出错时写到标准错误并以非 0 退出。
 """
 import base64
@@ -40,7 +45,7 @@ import urllib.error
 import urllib.request
 
 BASE = os.environ.get("SPEEDAI_API_BASE", "https://api.speedai.com").rstrip("/")
-UA = "speedai-jiangai-skill/1.2"
+UA = "speedai-jiangai-skill/1.3"
 MAX_CHARS = int(os.environ.get("SPEEDAI_MAX_CHARS", "1000"))
 PLATFORMS = {"zhiwang", "weipu", "weipu_qikan", "wanfang", "gezida", "daya", "turnitin", "gptzero"}
 MODES = {"deai", "rewrite", "deai_rewrite", "polish"}
@@ -53,32 +58,154 @@ def fail(msg, code=1):
     sys.exit(code)
 
 
-CRED_PATH = os.path.join(os.path.expanduser("~"), ".speedai", "credentials.json")
+SPEEDAI_DIR = os.path.join(os.path.expanduser("~"), ".speedai")
+CRED_PATH = os.path.join(SPEEDAI_DIR, "credentials.json")
+LOGIN_STATE_PATH = os.path.join(SPEEDAI_DIR, "login.json")
+# 官方客户端元数据文档（OAuth CIMD），托管在 speedai.com；不可用时退回动态注册（client_id 缓存在凭证文件里）
+OAUTH_CLIENT_ID = os.environ.get("SPEEDAI_OAUTH_CLIENT_ID", "https://speedai.com/skill/oauth-client.json")
+OAUTH_CLIENT_NAME = "SpeedAI 降AI率与AIGC检测技能"
+LOGIN_HINT = ("还没有连接 SpeedAI 账号。请运行 `python3 speedai.py login`：会打开浏览器，"
+              "用户登录 speedai.com 后点「允许」即可（不用复制 Key）；然后运行 `python3 speedai.py login --wait`。")
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_private(path, data):
+    """原子写入仅本人可读的 JSON 文件"""
+    os.makedirs(SPEEDAI_DIR, mode=0o700, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, path)
+    try:
+        os.chmod(SPEEDAI_DIR, 0o700)
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+class cred_lock:
+    """跨进程锁：刷新令牌会轮换，旧令牌重放会吊销整组授权，所以同一时间只允许一个进程刷新"""
+
+    def __enter__(self):
+        os.makedirs(SPEEDAI_DIR, mode=0o700, exist_ok=True)
+        self.f = open(CRED_PATH + ".lock", "a+")
+        try:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_EX)
+        except ImportError:  # Windows
+            import msvcrt
+            self.f.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(self.f.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.2)
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            try:
+                import fcntl
+                fcntl.flock(self.f, fcntl.LOCK_UN)
+            except ImportError:
+                import msvcrt
+                self.f.seek(0)
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        finally:
+            self.f.close()
+
+
+def http_json(url, data=None, form=False, timeout=30):
+    """OAuth 端点用的小请求：返回 (状态码, JSON)；网络错误返回 (0, {})"""
+    headers = {"User-Agent": UA, "Accept": "application/json"}
+    body = None
+    if data is not None:
+        if form:
+            from urllib.parse import urlencode
+            body = urlencode(data).encode("utf-8")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+        else:
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST" if body is not None else "GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {}
+    except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException):
+        return 0, {}
+
+
+def refresh_oauth(stale_access=None):
+    """刷新登录令牌；别的进程已经刷新过就直接用新的。失败返回 None。"""
+    with cred_lock():
+        cred = read_json(CRED_PATH)
+        oauth = cred.get("oauth") or {}
+        if not oauth.get("refresh_token"):
+            return None
+        if oauth.get("access_token") != stale_access and oauth.get("expires_at", 0) > time.time() + 60:
+            return oauth["access_token"]
+        status, tok = http_json(BASE + "/oauth/token", {
+            "grant_type": "refresh_token", "refresh_token": oauth["refresh_token"],
+            "client_id": oauth.get("client_id", ""),
+        }, form=True)
+        if status != 200 or not tok.get("access_token"):
+            if status in (400, 401):  # 刷新令牌失效（授权被断开或已过期）：清掉，提示重新登录
+                cred.pop("oauth", None)
+                write_private(CRED_PATH, cred)
+            return None
+        oauth.update(access_token=tok["access_token"], refresh_token=tok.get("refresh_token") or oauth["refresh_token"],
+                     expires_at=int(time.time()) + int(tok.get("expires_in") or 3600))
+        cred["oauth"] = oauth
+        write_private(CRED_PATH, cred)
+        return oauth["access_token"]
 
 
 def load_key():
+    """返回 (凭证, 类型)：类型 env / api_key / oauth；没有时 ("", "")"""
     key = os.environ.get("SPEEDAI_API_KEY", "").strip()
     if key:
-        return key
-    try:
-        with open(CRED_PATH, encoding="utf-8") as f:
-            return str(json.load(f).get("api_key") or "").strip()
-    except (OSError, ValueError, AttributeError):
-        return ""
+        return key, "env"
+    cred = read_json(CRED_PATH)
+    oauth = cred.get("oauth") or {}
+    if oauth.get("access_token"):
+        if oauth.get("expires_at", 0) > time.time() + 60:
+            return oauth["access_token"], "oauth"
+        token = refresh_oauth(oauth["access_token"])
+        if token:
+            return token, "oauth"
+    key = str(cred.get("api_key") or "").strip()
+    return (key, "api_key") if key else ("", "")
 
 
 def call(method, path, body=None, key=None):
-    key = key or load_key()
+    kind = "given"
     if not key:
-        fail("还没有连接 SpeedAI 账号。请在 https://speedai.com/open/console/keys 创建 API Key，"
-             "然后运行 `python3 speedai.py set-key` 粘贴保存（或设置环境变量 SPEEDAI_API_KEY）。", 2)
+        key, kind = load_key()
+    if not key:
+        fail(LOGIN_HINT, 2)
     data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(BASE + "/open/v1" + path, data=data, method=method)
-    req.add_header("Authorization", "Bearer " + key)
-    req.add_header("User-Agent", UA)
-    if data is not None:
-        req.add_header("Content-Type", "application/json")
-    for attempt in range(3):
+    retried = False
+    for attempt in range(4):
+        req = urllib.request.Request(BASE + "/open/v1" + path, data=data, method=method)
+        req.add_header("Authorization", "Bearer " + key)
+        req.add_header("User-Agent", UA)
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
         try:
             with urllib.request.urlopen(req, timeout=150) as resp:
                 return resp.status, json.loads(resp.read() or b"{}")
@@ -87,14 +214,20 @@ def call(method, path, body=None, key=None):
                 detail = json.loads(e.read() or b"{}")
             except ValueError:
                 detail = {}
-            if e.code == 429 and attempt < 2:
+            if e.code == 401 and kind == "oauth" and not retried:
+                retried = True
+                key = refresh_oauth(key)
+                if key:
+                    continue
+                fail("SpeedAI 登录已失效。" + LOGIN_HINT, 2)
+            if e.code == 429 and attempt < 3:
                 time.sleep(int(e.headers.get("Retry-After") or 10))
                 continue
             fail(json.dumps({"status": e.code, "error": detail.get("error", detail)}, ensure_ascii=False))
         except urllib.error.URLError as e:
             fail(f"无法连接 {BASE}：{e.reason}。如果在沙箱里运行，请允许访问该地址。")
         except (ConnectionError, http.client.HTTPException) as e:
-            if attempt < 2:
+            if attempt < 3:
                 time.sleep(2)
                 continue
             fail(f"连接 {BASE} 时被中断：{e}。请稍后重试。")
@@ -424,7 +557,7 @@ def recharge_status(rest):
 
 
 def set_key(rest):
-    """保存 API Key：先用它查一次账号确认有效，再写入仅本人可读的凭证文件。"""
+    """备选：保存 API Key。先用它查一次账号确认有效，再写入仅本人可读的凭证文件（会替换掉登录状态）。"""
     if rest:
         fail("用法：speedai.py set-key（Key 从标准输入读取，不要写在命令行参数里）")
     if sys.stdin.isatty():
@@ -435,19 +568,249 @@ def set_key(rest):
     if not re.fullmatch(r"sa_live_[A-Za-z0-9_-]{16,128}", key):
         fail("Key 格式不对：应以 sa_live_ 开头。请在 https://speedai.com/open/console/keys 复制完整的 Key。")
     account = call("GET", "/account", key=key)[1]
-    folder = os.path.dirname(CRED_PATH)
-    os.makedirs(folder, mode=0o700, exist_ok=True)
-    tmp = CRED_PATH + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"api_key": key}, f)
-    os.replace(tmp, CRED_PATH)
+    with cred_lock():
+        write_private(CRED_PATH, {"api_key": key})
+    print(json.dumps({"saved": CRED_PATH, "account": account}, ensure_ascii=False, indent=2))
+
+
+# ---------------------------------------------------------------- 浏览器登录（OAuth 2.1 授权码 + PKCE，本机回调）
+LOGIN_TIMEOUT = 600
+
+SUCCESS_PAGE = """<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SpeedAI 已连接</title><body style="font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0;color:#111318">
+<div style="text-align:center"><div style="font-size:44px">&#10003;</div><h1 style="font-size:22px">SpeedAI 账号已连接</h1>
+<p style="color:#566172">可以关闭这个页面，回到 AI 助手继续。</p></div></body></html>"""
+FAIL_PAGE = """<!doctype html><html lang="zh"><meta charset="utf-8"><title>SpeedAI 未连接</title>
+<body style="font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:22px">没有完成连接</h1><p style="color:#566172">{msg}</p></div></body></html>"""
+
+
+def oauth_client(redirect_uri):
+    """优先用官方元数据文档 client_id；后端拉不到时退回动态注册（结果缓存）"""
+    status, body = http_json(BASE + "/oauth/token", {
+        "grant_type": "refresh_token", "refresh_token": "sa_ort_probe", "client_id": OAUTH_CLIENT_ID}, form=True)
+    if status and body.get("error") != "invalid_client":
+        return OAUTH_CLIENT_ID
+    cached = read_json(CRED_PATH).get("registered_client_id")
+    if cached:
+        return cached
+    status, reg = http_json(BASE + "/oauth/register", {
+        "client_name": OAUTH_CLIENT_NAME, "client_uri": "https://speedai.com/open",
+        "redirect_uris": ["http://127.0.0.1/callback"], "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"], "scope": "speedai"})
+    if status != 201 or not reg.get("client_id"):
+        fail(f"无法连接 SpeedAI 登录服务（{BASE}）。请检查网络后重试，或改用 API Key：speedai.py set-key。")
+    with cred_lock():
+        cred = read_json(CRED_PATH)
+        cred["registered_client_id"] = reg["client_id"]
+        write_private(CRED_PATH, cred)
+    return reg["client_id"]
+
+
+def save_login_state(**fields):
+    state = read_json(LOGIN_STATE_PATH)
+    state.update(fields)
+    write_private(LOGIN_STATE_PATH, state)
+
+
+def serve_login(timeout=LOGIN_TIMEOUT):
+    """监听本机回调、换取令牌并保存。进度写到 ~/.speedai/login.json。返回 True 表示成功。"""
+    import hashlib
+    import secrets
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.parse import parse_qs, urlencode, urlsplit
+
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(24)
+    result = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            u = urlsplit(self.path)
+            if u.path != "/callback":
+                self.send_response(404)
+                self.end_headers()
+                return
+            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            ok = q.get("state") == state and q.get("code")
+            if ok:
+                result["code"] = q["code"]
+            elif q.get("state") == state:
+                result["error"] = "denied" if q.get("error") == "access_denied" else (q.get("error") or "no_code")
+            page = SUCCESS_PAGE if ok else FAIL_PAGE.format(
+                msg="你没有点「允许」。需要时回到 AI 助手重新登录即可。" if result.get("error") == "denied"
+                else "登录链接已失效，请回到 AI 助手重新登录。")
+            data = page.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    server.timeout = 1
+    redirect_uri = f"http://127.0.0.1:{server.server_port}/callback"
+    client_id = oauth_client(redirect_uri)
+    url = BASE + "/oauth/authorize?" + urlencode({
+        "response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri, "scope": "speedai",
+        "state": state, "code_challenge": challenge, "code_challenge_method": "S256"})
+    save_login_state(status="waiting", url=url, pid=os.getpid(), started=int(time.time()),
+                     expires=int(time.time()) + timeout, error=None)
+    deadline = time.time() + timeout
     try:
-        os.chmod(folder, 0o700)
-        os.chmod(CRED_PATH, 0o600)
+        while not result and time.time() < deadline:
+            server.handle_request()
+    finally:
+        server.server_close()
+    if not result:
+        save_login_state(status="expired")
+        return False
+    if result.get("error"):
+        save_login_state(status="error", error=result["error"])
+        return False
+    status, tok = http_json(BASE + "/oauth/token", {
+        "grant_type": "authorization_code", "code": result["code"], "redirect_uri": redirect_uri,
+        "client_id": client_id, "code_verifier": verifier}, form=True)
+    if status != 200 or not tok.get("access_token"):
+        save_login_state(status="error", error=tok.get("error_description") or tok.get("error") or f"HTTP {status}")
+        return False
+    with cred_lock():
+        cred = read_json(CRED_PATH)
+        cred.pop("api_key", None)
+        cred["oauth"] = {"client_id": client_id, "access_token": tok["access_token"],
+                         "refresh_token": tok.get("refresh_token"),
+                         "expires_at": int(time.time()) + int(tok.get("expires_in") or 3600)}
+        write_private(CRED_PATH, cred)
+    save_login_state(status="done", error=None)
+    return True
+
+
+def login_state_alive(state):
+    pid = state.get("pid")
+    if not pid or state.get("status") != "waiting" or state.get("expires", 0) < time.time():
+        return False
+    if os.name == "nt":
+        return True  # Windows 上不便探测进程，按过期时间判断
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def open_browser(url):
+    try:
+        import webbrowser
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def account_or_none():
+    key, _ = load_key()
+    if not key:
+        return None
+    try:
+        return call("GET", "/account")[1]
+    except SystemExit:
+        return None
+
+
+def login(rest):
+    wait, rest = take_opt(rest, "--wait", flag=True)
+    foreground, rest = take_opt(rest, "--foreground", False, flag=True)
+    serve, rest = take_opt(rest, "--serve", False, flag=True)
+    no_browser, rest = take_opt(rest, "--no-browser", False, flag=True)
+    if serve:  # 内部：后台监听进程
+        serve_login()
+        return
+    if wait:
+        seconds = int(rest[0]) if rest and rest[0].isdigit() else 120
+        deadline = time.time() + seconds
+        while True:
+            state = read_json(LOGIN_STATE_PATH)
+            if state.get("status") == "done":
+                print(json.dumps({"logged_in": True, "account": account_or_none()}, ensure_ascii=False, indent=2))
+                return
+            if state.get("status") == "error":
+                fail("没有完成登录（" + ("用户没有点「允许」" if state.get("error") == "denied" else str(state.get("error"))) +
+                     "）。需要时重新运行 `speedai.py login`。", 3)
+            if not login_state_alive(state):
+                fail("登录链接已失效或后台登录进程已结束。请重新运行 `speedai.py login`；"
+                     "如果反复出现，改用 `speedai.py login --foreground`。", 3)
+            if time.time() >= deadline:
+                print(json.dumps({"logged_in": False, "waiting": True, "login_url": state.get("url"),
+                                  "hint": "用户还没点「允许」。请把 login_url 发给用户，等用户说好了再运行 speedai.py login --wait"},
+                                 ensure_ascii=False, indent=2))
+                sys.exit(4)
+            time.sleep(2)
+    if rest:
+        fail(f"无法识别的参数：{' '.join(rest)}")
+    account = account_or_none()
+    if account and read_json(CRED_PATH).get("oauth"):
+        print(json.dumps({"logged_in": True, "already": True, "account": account}, ensure_ascii=False, indent=2))
+        return
+    try:
+        os.remove(LOGIN_STATE_PATH)
     except OSError:
         pass
-    print(json.dumps({"saved": CRED_PATH, "account": account}, ensure_ascii=False, indent=2))
+    if foreground:
+        import threading
+        t = threading.Thread(target=serve_login, daemon=True)
+        t.start()
+        for _ in range(100):
+            if read_json(LOGIN_STATE_PATH).get("url"):
+                break
+            time.sleep(0.1)
+        url = read_json(LOGIN_STATE_PATH).get("url")
+        if url:
+            opened = (not no_browser) and open_browser(url)
+            print(("已打开浏览器。" if opened else "请打开这个链接：") + "登录 speedai.com 后点「允许」：\n" + url,
+                  file=sys.stderr, flush=True)
+        t.join()
+        state = read_json(LOGIN_STATE_PATH)
+        if state.get("status") != "done":
+            fail("没有完成登录（" + str(state.get("error") or "超时") + "）。需要时重新运行 `speedai.py login`。", 3)
+        print(json.dumps({"logged_in": True, "account": account_or_none()}, ensure_ascii=False, indent=2))
+        return
+    import subprocess
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "login", "--serve"], **kwargs)
+    url = None
+    for _ in range(150):
+        url = read_json(LOGIN_STATE_PATH).get("url")
+        if url:
+            break
+        time.sleep(0.1)
+    if not url:
+        fail("无法启动登录。请改用 `speedai.py login --foreground`，或用 API Key：speedai.py set-key。")
+    opened = (not no_browser) and open_browser(url)
+    print(json.dumps({
+        "login_url": url, "browser_opened": opened, "expires_in": LOGIN_TIMEOUT,
+        "say_to_user": ("我打开了 SpeedAI 的登录页，" if opened else "请打开这个链接，") +
+                       "登录 speedai.com 后点「允许」就好，不用复制 Key。" + ("" if opened else url),
+        "next": "用户点完「允许」后运行：python3 speedai.py login --wait",
+    }, ensure_ascii=False, indent=2))
+
+
+def logout(rest):
+    with cred_lock():
+        cred = read_json(CRED_PATH)
+        oauth = cred.pop("oauth", None)
+        had_key = cred.pop("api_key", None) is not None
+        write_private(CRED_PATH, cred)
+    if oauth and oauth.get("refresh_token"):
+        http_json(BASE + "/oauth/revoke", {"token": oauth["refresh_token"], "client_id": oauth.get("client_id", "")},
+                  form=True)
+    print(json.dumps({"logged_out": bool(oauth or had_key)}, ensure_ascii=False))
 
 
 def main(argv):
@@ -475,6 +838,10 @@ def main(argv):
         report(rest)
     elif cmd == "set-key":
         set_key(rest)
+    elif cmd == "login":
+        login(rest)
+    elif cmd == "logout":
+        logout(rest)
     elif cmd == "recharge-plans":
         print(json.dumps(call("GET", "/recharge/plans")[1], ensure_ascii=False, indent=2))
     elif cmd == "recharge":

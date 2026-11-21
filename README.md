@@ -24,7 +24,7 @@
 | 应用 | 安装技能 | 连接 MCP |
 |---|---|---|
 | [科搭 Codar](https://speedai.com/codar) | 开箱即用：已内置，登录科搭即可用 | 已内置，不用填 Key |
-| WorkBuddy | 打开 [技能链接](https://www.workbuddy.cn/share/asset?shareCode=Z1BqVAYDbsU1hyWSFjUNyO&sig=LYL9XuDPJAw3jfdn) 添加；或一句话安装 | 打开 [连接器链接](https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J) 添加，用 speedai.com 账号授权，不用填 Key；也可以手动配置（见下方） |
+| WorkBuddy | 打开 [SpeedAI 连接器](https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J) 添加，技能已包含在内 | 同一个链接，用 speedai.com 账号授权，不用填 Key；也可以手动配置（见下方） |
 | 豆包工作 | 下载 [技能包](https://speedai.com/downloads/speedai-jiangai-skill.zip) 发给豆包，说「帮我安装这个技能」；或「插件·技能·伙伴 → 技能 → + 添加 → 上传技能」 | 「插件·技能·伙伴 → 新建 → 新建自定义连接器」 |
 
 ### 海外
@@ -57,10 +57,7 @@ npx skills add https://github.com/SpeedAI-team/speedai-skills
 
 ### WorkBuddy
 
-推荐直接打开链接添加，不用创建 Key、不用改配置文件：
-
-- 技能：<https://www.workbuddy.cn/share/asset?shareCode=Z1BqVAYDbsU1hyWSFjUNyO&sig=LYL9XuDPJAw3jfdn>
-- 连接器：<https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J>（按提示用 speedai.com 账号授权）
+推荐直接打开 [SpeedAI 连接器](https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J) 添加：连接器自带本技能，按提示登录 speedai.com 并点「允许」即可，不用创建 Key、不用改配置文件。只想单独装技能，可以用 [技能链接](https://www.workbuddy.cn/share/asset?shareCode=Z1BqVAYDbsU1hyWSFjUNyO&sig=LYL9XuDPJAw3jfdn)。
 
 也可以手动配置连接器：WorkBuddy 的自定义连接器是配置文件，没有填地址的输入框。在「连接器」点「+ 自定义连接器」，在打开的 `~/.workbuddy/mcp.json` 的 `mcpServers` 里加入：
 
@@ -77,13 +74,14 @@ npx skills add https://github.com/SpeedAI-team/speedai-skills
 
 ## 连接账号
 
-技能脚本需要 API Key：在 <https://speedai.com/open/console/keys> 创建，然后在终端运行并粘贴（输入不显示）：
+第一次使用时，AI 助手会运行下面的命令帮你登录：浏览器打开 speedai.com 授权页，登录后点「允许」即可，不用复制 Key。登录长期有效，过期自动续期。
 
 ```bash
-python3 ~/.agents/skills/speedai-jiangai/scripts/speedai.py set-key
+python3 ~/.agents/skills/speedai-jiangai/scripts/speedai.py login
+python3 ~/.agents/skills/speedai-jiangai/scripts/speedai.py login --wait   # 等你点完「允许」
 ```
 
-Key 保存在 `~/.speedai/credentials.json`（仅本人可读），也可以用环境变量 `SPEEDAI_API_KEY`。通过 MCP 连接器使用时，支持 OAuth 的应用（Claude、Claude Code 等）用 speedai.com 账号授权即可，不需要 Key。
+也可以用 API Key：在 <https://speedai.com/open/console/keys> 创建，运行 `speedai.py set-key` 粘贴（输入不显示），或设置环境变量 `SPEEDAI_API_KEY`。登录信息保存在 `~/.speedai/credentials.json`（仅本人可读），`speedai.py logout` 退出并撤销授权。通过 MCP 连接器使用时，支持 OAuth 的应用（Claude、Claude Code 等）用 speedai.com 账号授权即可，不需要 Key。
 
 ## 用法示例
 
@@ -110,7 +108,7 @@ Official SpeedAI skill and MCP server for lowering AIGC (AI-generated content) s
 - Install the skill: `npx skills add SpeedAI-team/speedai-skills`, or tell your agent: *"Install the SpeedAI AI Rate Reducer & AIGC Detector skill by following https://speedai.com/skill/install.txt"*
 - Claude Code plugin (skill + MCP): `/plugin marketplace add SpeedAI-team/speedai-skills`, then `/plugin install speedai-jiangai@speedai`
 - Remote MCP: `https://api.speedai.com/mcp` (OAuth or `Authorization: Bearer <API key>`); local: `npx -y speedai-cn-mcp`
-- API keys: <https://speedai.com/open/console/keys> · Docs: <https://speedai.com/open/docs>
+- Sign in: the skill runs `speedai.py login`, which opens speedai.com in the browser; click Allow and you are connected (no key to copy). API keys are also supported: <https://speedai.com/open/console/keys> · Docs: <https://speedai.com/open/docs>
 
 ## License
 

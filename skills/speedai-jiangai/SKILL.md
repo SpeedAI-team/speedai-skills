@@ -2,7 +2,7 @@
 name: speedai-jiangai
 display_name: SpeedAI 降AI率与AIGC检测
 display_name_en: SpeedAI AI Rate Reducer & AIGC Detector
-description: 论文降 AI 率（降 AIGC 率）、降重、润色和 AIGC 检测（知网 / 维普 / 万方 / 格子达等），支持整篇 Word 文档和 AIGC 检测报告（PDF）。当用户提到降 AI、降 AIGC、AI 率太高、AIGC 检测没过、降重、查重率高、查 AI 率、去 AI 味、润色论文、出检测报告时使用。可调用 SpeedAI 连接器（MCP 工具）、SpeedAI 开放 API（SPEEDAI_API_KEY），两者都没有时按内置清单人工修改。
+description: 论文降 AI 率（降 AIGC 率）、降重、润色和 AIGC 检测（知网 / 维普 / 万方 / 格子达等），支持整篇 Word 文档和 AIGC 检测报告（PDF）。当用户提到降 AI、降 AIGC、AI 率太高、AIGC 检测没过、降重、查重率高、查 AI 率、去 AI 味、润色论文、出检测报告时使用。可调用 SpeedAI 连接器（MCP 工具），或用自带脚本登录 speedai.com 账号后调用 SpeedAI 开放 API，都不可用时按内置清单人工修改。
 description_zh: 用 SpeedAI 给论文降 AI 率（降 AIGC）、降重、润色，并检测 AI 率
 description_en: Lower AIGC scores, reduce similarity, polish and check the AI rate of Chinese theses with SpeedAI
 examples_zh:
@@ -13,7 +13,7 @@ examples_en:
   - "Lower the CNKI AIGC score of this paragraph"
   - "Check the AI rate of this text using the VIP standard"
   - "Lower the AIGC score of this Word thesis"
-version: 1.2.1
+version: 1.3.0
 author: SpeedAI
 ---
 
@@ -24,8 +24,14 @@ author: SpeedAI
 ## 选择调用方式（按顺序）
 
 1. **已连接 SpeedAI 连接器 / MCP**（能看到 `humanize_text`、`detect_aigc`、`humanize_document`、`detect_document` 等工具）：直接调用工具。整篇文档用 `humanize_document` → `get_document`（先 `start: false` 估价，用户同意后 `start_document`），检测报告用 `detect_document` → `get_detect_report`。有的应用会给工具名加连接器前缀（如 `mcp_…_detect_aigc`），名字过长时只在工具说明里写原名（`original tool: …`），按原名识别即可。在科搭 Codar 里，本插件自带连接器，直接使用当前登录的 SpeedAI 账号，不需要 API Key；看不到这些工具或提示登录失效时，请用户重新登录科搭的 SpeedAI 账号，不要让用户去创建 API Key。
-2. **已保存 API Key**（`~/.speedai/credentials.json`，或环境变量 `SPEEDAI_API_KEY`）：运行本技能自带的脚本（只用 Python 标准库，输出 JSON）。脚本提示「还没有连接 SpeedAI 账号」时，请用户在 https://speedai.com/open/console/keys 创建 Key，并在自己的终端运行 `python3 scripts/speedai.py set-key` 粘贴保存。
+   在 **WorkBuddy** 里看不到这些工具时，最省事的是请用户添加 SpeedAI 连接器（自带本技能，登录授权即可，不用 Key）。直接对用户说：「点这个链接添加 SpeedAI：https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J ，在弹出的页面登录 speedai.com 并点『允许』，好了告诉我。」也可以走下面第 2 种方式。
+2. **用本技能自带的脚本**（只用 Python 标准库，输出 JSON；需要能运行命令）。第一次使用、或脚本提示「还没有连接 SpeedAI 账号」时，先帮用户登录（不用复制 Key）：
+   1. 运行 `python3 scripts/speedai.py login`。它会打开浏览器里的 speedai.com 授权页并立即返回；把输出里的 `say_to_user` 原样告诉用户（浏览器没打开时里面带链接），例如「我打开了 SpeedAI 的登录页，登录 speedai.com 后点『允许』就好」。
+   2. 用户说好了（或你判断用户已操作）后运行 `python3 scripts/speedai.py login --wait`，看到 `"logged_in": true` 就继续原来的任务；返回 `"waiting": true` 表示用户还没点完，把 `login_url` 发给用户再等。
+   3. 提示「后台登录进程已结束」时，改用 `python3 scripts/speedai.py login --foreground`（会一直等到用户点完「允许」，最多 10 分钟，请给这条命令足够的超时时间）。
+   登录一次长期有效（过期自动续期）；不用向用户解释 OAuth、令牌这些概念。用户更想用 API Key 时：请用户在 https://speedai.com/open/console/keys 创建 Key，并在自己的终端运行 `python3 scripts/speedai.py set-key` 粘贴保存（也支持环境变量 `SPEEDAI_API_KEY`）。
    ```bash
+   python3 scripts/speedai.py login                                             # 登录 speedai.com（第一次用时）
    python3 scripts/speedai.py detect   --platform zhiwang < 段落.txt   # 分段 AIGC 检测
    python3 scripts/speedai.py humanize --mode deai --platform zhiwang < 段落.txt   # 降 AIGC
    python3 scripts/speedai.py humanize --mode rewrite --platform weipu < 段落.txt  # 降重
@@ -39,7 +45,7 @@ author: SpeedAI
    python3 scripts/speedai.py recharge-status ORDER_ID --wait                    # 等待支付到账
    ```
    超过 1,000 字的文本，脚本会按段落自动切块、依次处理后拼回。Word 文档保留格式、参考文献和表格，标题和参考文献等自动跳过不扣费；积分不足会暂停，充值后用 `document-start` 继续。
-3. **两者都没有**：按下面的「人工修改清单」改写，并告诉用户可以在 https://speedai.com/open/console/keys 创建 API Key 后用 `set-key` 保存，或直接在 https://speedai.com 上传 Word 处理整篇论文。
+3. **都不可用**（没有连接器、也不能运行命令）：按下面的「人工修改清单」改写，并告诉用户可以直接在 https://speedai.com 上传 Word 处理整篇论文。
 
 ## 怎么选模式和平台
 

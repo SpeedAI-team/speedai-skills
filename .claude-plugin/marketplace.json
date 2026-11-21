@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "SpeedAI 官方插件：降AI率与AIGC检测（speedai-jiangai）",
-    "version": "1.2.1"
+    "version": "1.3.0"
   },
   "plugins": [
     {

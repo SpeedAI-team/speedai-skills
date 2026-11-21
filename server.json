@@ -3,7 +3,7 @@
   "name": "io.github.SpeedAI-team/speedai-jiangai",
   "title": "SpeedAI",
   "description": "SpeedAI AI Rate Reducer & AIGC Detector: lower AIGC scores and check the AI rate of Chinese theses.",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "websiteUrl": "https://speedai.com/open",
   "repository": { "url": "https://github.com/SpeedAI-team/speedai-skills", "source": "github" },
   "remotes": [
