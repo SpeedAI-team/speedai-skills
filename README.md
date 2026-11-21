@@ -24,7 +24,7 @@
 | 应用 | 安装技能 | 连接 MCP |
 |---|---|---|
 | [科搭 Codar](https://speedai.com/codar) | 开箱即用：已内置，登录科搭即可用 | 已内置，不用填 Key |
-| WorkBuddy | 一句话安装；或放到 `~/.workbuddy/skills` | 「连接器 → + 自定义连接器」会打开 `~/.workbuddy/mcp.json`，加入下方配置 |
+| WorkBuddy | 打开 [技能链接](https://www.workbuddy.cn/share/asset?shareCode=Z1BqVAYDbsU1hyWSFjUNyO&sig=LYL9XuDPJAw3jfdn) 添加；或一句话安装 | 打开 [连接器链接](https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J) 添加，用 speedai.com 账号授权，不用填 Key；也可以手动配置（见下方） |
 | 豆包工作 | 下载 [技能包](https://speedai.com/downloads/speedai-jiangai-skill.zip) 发给豆包，说「帮我安装这个技能」；或「插件·技能·伙伴 → 技能 → + 添加 → 上传技能」 | 「插件·技能·伙伴 → 新建 → 新建自定义连接器」 |
 
 ### 海外
@@ -55,9 +55,14 @@ npx skills add https://github.com/SpeedAI-team/speedai-skills
 
 也可以对 AI 助手说：「从 https://github.com/SpeedAI-team/speedai-skills 安装 SpeedAI 降AI率与AIGC检测技能」。
 
-### WorkBuddy 连接器配置
+### WorkBuddy
 
-WorkBuddy 的自定义连接器是配置文件，没有填地址的输入框。在「连接器」点「+ 自定义连接器」，在打开的 `~/.workbuddy/mcp.json` 的 `mcpServers` 里加入：
+推荐直接打开链接添加，不用创建 Key、不用改配置文件：
+
+- 技能：<https://www.workbuddy.cn/share/asset?shareCode=Z1BqVAYDbsU1hyWSFjUNyO&sig=LYL9XuDPJAw3jfdn>
+- 连接器：<https://www.workbuddy.cn/share/asset?shareCode=GUE2mABosfKRhFNfoBOagO&sig=T1IHcGVwpR33Qd4J>（按提示用 speedai.com 账号授权）
+
+也可以手动配置连接器：WorkBuddy 的自定义连接器是配置文件，没有填地址的输入框。在「连接器」点「+ 自定义连接器」，在打开的 `~/.workbuddy/mcp.json` 的 `mcpServers` 里加入：
 
 ```json
 "speedai": {
