@@ -2,9 +2,12 @@
 """SpeedAI 开放 API 客户端（speedai-jiangai 技能自带，只用 Python 标准库）。
 
 用法:
-  python3 speedai.py humanize [FILE] [--mode MODE] [--platform P] [--lang L] [--no-deep]
+  python3 speedai.py humanize [FILE] [--mode MODE] [--platform P] [--lang L] [--no-deep] [--out PATH] [--tex]
         MODE: deai（降 AIGC，默认）| rewrite（降重）| deai_rewrite（降重+降 AIGC）| polish（润色）
-  python3 speedai.py detect   [FILE] [--platform P]     # 分段 AIGC 检测，P：zhiwang（默认）| weipu | turnitin
+        每段改写后自动核对数字、公式、引用和 LaTeX 命令，对不上的段落保留原文并列在 kept_original
+        （--no-check 关闭）；--out 把结果写到文件（整篇文件建议用）
+        LaTeX（.tex 文件或 --tex）：只改写正文段落，导言区、公式、表格、图、标题、注释原样保留
+  python3 speedai.py detect   [FILE] [--platform P] [--tex]  # 分段 AIGC 检测，P：zhiwang（默认）| weipu | turnitin
   python3 speedai.py job JOB_ID                         # 查询仍在处理中的任务
   python3 speedai.py balance                            # 账号与剩余积分
   python3 speedai.py document FILE.docx [--mode MODE] [--platform P] [--no-deep] [--report REPORT] [--estimate] [--out PATH]
@@ -45,7 +48,7 @@ import urllib.error
 import urllib.request
 
 BASE = os.environ.get("SPEEDAI_API_BASE", "https://api.speedai.com").rstrip("/")
-UA = "speedai-jiangai-skill/1.3"
+UA = "speedai-jiangai-skill/1.4"
 MAX_CHARS = int(os.environ.get("SPEEDAI_MAX_CHARS", "1000"))
 PLATFORMS = {"zhiwang", "weipu", "weipu_qikan", "wanfang", "gezida", "daya", "turnitin", "gptzero"}
 MODES = {"deai", "rewrite", "deai_rewrite", "polish"}
@@ -292,10 +295,184 @@ def read_text(rest):
     return sys.stdin.read()
 
 
+# ---------------------------------------------------------------- LaTeX：只把正文段落交给接口
+# 这些环境里是正文，照常处理；其他环境（公式、表格、图、代码、参考文献……）原样保留
+TEX_PROSE_ENVS = {"document", "abstract", "itemize", "enumerate", "description", "quote", "quotation",
+                  "CJK", "CJK*", "spacing", "flushleft", "flushright", "minipage"}
+# 以这些命令开头的行原样保留（标题、标签、图表、排版命令不改写）
+TEX_KEEP_CMDS = {"section", "subsection", "subsubsection", "chapter", "part", "paragraph", "subparagraph",
+                 "caption", "label", "title", "author", "date", "maketitle", "tableofcontents", "listoffigures",
+                 "listoftables", "bibliography", "bibliographystyle", "printbibliography", "appendix",
+                 "newpage", "clearpage", "cleardoublepage", "pagebreak", "vspace", "hspace", "vskip", "hskip",
+                 "centering", "includegraphics", "input", "include", "keywords", "newcommand",
+                 "renewcommand", "setlength", "addcontentsline", "pagestyle", "thispagestyle", "bigskip",
+                 "medskip", "smallskip", "noindent", "par", "linebreak", "footnotesize", "small", "large",
+                 "Large", "normalsize", "begin", "end", "item"}
+_TEX_BEGIN = re.compile(r"\\begin\{([^}]+)\}")
+_TEX_END = re.compile(r"\\end\{([^}]+)\}")
+_TEX_LEAD_CMD = re.compile(r"^\s*\\([A-Za-z]+)\*?")
+
+
+def looks_like_tex(text, path=None):
+    if path and path.lower().endswith((".tex", ".ltx")):
+        return True
+    return bool(re.search(r"\\(documentclass|begin\{document\}|section\*?\{|cite[pt]?\{)", text))
+
+
+def tex_segments(text):
+    """把 LaTeX 源码切成 [(is_prose, 文本)]，拼起来与原文逐字相同。正文以外的内容一律 is_prose=False。"""
+    lines = text.splitlines(keepends=True)
+    segs = []
+
+    def add(prose, line):
+        if segs and segs[-1][0] == prose:
+            segs[-1][1] += line
+        else:
+            segs.append([prose, line])
+
+    has_doc = "\\begin{document}" in text
+    in_body = not has_doc
+    keep_env, keep_depth, display = None, 0, False
+    for line in lines:
+        bare = line.strip()
+        if not in_body:
+            add(False, line)
+            if "\\begin{document}" in line:
+                in_body = True
+            continue
+        if "\\end{document}" in line:
+            add(False, line)
+            in_body = False
+            continue
+        if keep_env:
+            add(False, line)
+            keep_depth += len([m for m in _TEX_BEGIN.findall(line) if m == keep_env])
+            keep_depth -= len([m for m in _TEX_END.findall(line) if m == keep_env])
+            if keep_depth <= 0:
+                keep_env = None
+            continue
+        if display:
+            add(False, line)
+            if "\\]" in line or "$$" in line:
+                display = False
+            continue
+        m = _TEX_BEGIN.search(line)
+        if m and m.group(1) not in TEX_PROSE_ENVS:
+            add(False, line)
+            name = m.group(1)
+            keep_depth = len([x for x in _TEX_BEGIN.findall(line) if x == name]) - \
+                len([x for x in _TEX_END.findall(line) if x == name])
+            keep_env = name if keep_depth > 0 else None
+            continue
+        if bare.startswith("\\[") or bare == "$$" or (bare.startswith("$$") and bare.count("$$") == 1):
+            add(False, line)
+            display = not (bare.startswith("\\[") and "\\]" in bare)
+            continue
+        if not bare:
+            add(bool(segs) and segs[-1][0], line)  # 正文之间的空行留在正文里，相邻段落合并成一次请求
+            continue
+        if bare.startswith("%"):
+            add(False, line)
+            continue
+        lead = _TEX_LEAD_CMD.match(line)
+        if lead and lead.group(1) in TEX_KEEP_CMDS:
+            # \item 后面跟正文时照常改写正文，只保留 \item 本身
+            rest_text = re.sub(r"^\s*\\item(\[[^\]]*\])?\s*", "", line) if lead.group(1) == "item" else ""
+            if rest_text.strip():
+                add(False, line[: len(line) - len(rest_text)])
+                add(True, rest_text)
+            else:
+                add(False, line)
+            continue
+        add(True, line)
+    return [(prose, t) for prose, t in segs]
+
+
+# ---------------------------------------------------------------- 改写结果核对
+_NUM = re.compile(r"(?<![A-Za-z_])\d+(?:[.,]\d+)*")
+_MATH = re.compile(r"\$[^$\n]+\$|\\\(.+?\\\)")
+_TEX_REF = re.compile(r"\\(?:cite[a-z]*|[a-z]*ref|label|url|href|eqref|ref)\*?(?:\[[^\]]*\])*\{[^}]*\}")
+_TEX_CMD = re.compile(r"\\([A-Za-z]+)")
+_TEX_ESC = re.compile(r"\\[%&#_$]")
+
+
+def _facts(text, tex):
+    from collections import Counter
+    c = Counter()
+    for m in _MATH.findall(text):
+        c["公式 " + re.sub(r"\s+", "", m)] += 1
+    t = _MATH.sub(" ", text)
+    for m in _TEX_REF.findall(t):
+        c["引用 " + re.sub(r"\s+", "", m)] += 1
+    t = _TEX_REF.sub(" ", t)
+    for m in _NUM.findall(t):
+        c["数字 " + m.replace(",", "")] += 1
+    if tex:
+        for m in _TEX_CMD.findall(t):
+            c["命令 \\" + m] += 1
+        for m in _TEX_ESC.findall(t):
+            c["转义 " + m] += 1
+        c["花括号"] = t.count("{") - t.count("}")
+    return c
+
+
+def check_rewrite(before, after, tex):
+    """改写前后核对数字、公式、引用、LaTeX 命令。返回问题说明（空字符串表示没问题）。"""
+    if not after.strip():
+        return "接口返回为空"
+    a, b = _facts(before, tex), _facts(after, tex)
+    lost = sorted((a - b).elements())
+    added = sorted((b - a).elements())
+    probs = []
+    if lost:
+        probs.append("丢失 " + "、".join(dict.fromkeys(lost))[:200])
+    if added:
+        probs.append("多出 " + "、".join(dict.fromkeys(added))[:200])
+    n0, n1 = len(before.strip()), len(after.strip())
+    if n0 >= 80 and n1 < n0 * 0.5:
+        probs.append(f"长度从 {n0} 缩到 {n1}，可能删了内容")
+    return "；".join(probs)
+
+
+def _split_parts(text, blank_only):
+    sep = r"\n\s*\n" if blank_only else r"\n"
+    return [p for p in re.split(sep, text) if p.strip()]
+
+
+def guarded(before, after, tex):
+    """
+    逐段核对：先按行、再按空行把改写前后对齐，段数一致时只把有问题的段落换回原文；
+    都对不上时整块核对。返回 (结果文本, [问题])
+    """
+    for blank_only in (False, True):
+        b_parts, a_parts = _split_parts(before, blank_only), _split_parts(after, blank_only)
+        if len(b_parts) != len(a_parts) or len(b_parts) < 2:
+            continue
+        out, pos, issues = before, 0, []
+        for bp, ap in zip(b_parts, a_parts):
+            i = out.index(bp, pos)
+            prob = check_rewrite(bp, ap, tex)
+            if prob:
+                issues.append({"original": bp.strip()[:120], "reason": prob})
+                pos = i + len(bp)
+            else:
+                ap = bp[: len(bp) - len(bp.lstrip())] + ap.strip() + bp[len(bp.rstrip()):]
+                out = out[:i] + ap + out[i + len(bp):]
+                pos = i + len(ap)
+        return out, issues
+    prob = check_rewrite(before, after, tex)
+    if prob:
+        return before, [{"original": before.strip()[:120], "reason": prob}]
+    return after, []
+
+
 def humanize(rest):
     mode, rest = take_opt(rest, "--mode", "deai")
     platform, rest = take_opt(rest, "--platform", "zhiwang")
     lang, rest = take_opt(rest, "--lang")
+    out_path, rest = take_opt(rest, "--out")
+    force_tex, rest = take_opt(rest, "--tex", False, flag=True)
+    no_check, rest = take_opt(rest, "--no-check", False, flag=True)
     no_deep, rest = take_opt(rest, "--no-deep", False, flag=True)
     _, rest = take_opt(rest, "--deep", False, flag=True)  # 旧参数，默认已开启
     deep = not no_deep
@@ -303,37 +480,64 @@ def humanize(rest):
         fail(f"--mode 只能是 {', '.join(sorted(MODES))}")
     if platform not in PLATFORMS:
         fail(f"--platform 只能是 {', '.join(sorted(PLATFORMS))}")
-    text = read_text(rest).strip()
-    if not text:
+    raw = read_text(rest)
+    if not raw.strip():
         fail("文本为空")
-    out, jobs, cost, left = [], [], 0, None
-    for chunk in split_text(text):
-        body_text = chunk.strip("\n")
-        if not body_text.strip():
-            out.append(chunk)
+    tex = force_tex or looks_like_tex(raw, rest[0] if rest else None)
+    segments = tex_segments(raw) if tex else [(True, raw.strip())]
+    out, jobs, cost, left, kept, sent = [], [], 0, None, [], 0
+    for prose, seg in segments:
+        if not prose or not seg.strip():
+            out.append(seg)
             continue
-        body = {"text": body_text, "mode": mode, "platform": platform, "deep": bool(deep)}
-        if lang:
-            body["lang"] = lang
-        job = wait_job(*call("POST", "/humanize", body))
-        lead = chunk[: len(chunk) - len(chunk.lstrip("\n"))]
-        tail = chunk[len(chunk.rstrip("\n")):]
-        out.append(lead + (job.get("text") or "") + tail)
-        jobs.append(job.get("job_id"))
-        cost += int(job.get("cost") or 0)
-        left = job.get("points_left", left)
-    print(json.dumps({"mode": mode, "platform": platform, "text": "".join(out).strip(),
-                      "chunks": len(jobs), "job_ids": jobs, "cost": cost, "points_left": left},
-                     ensure_ascii=False, indent=2))
+        for chunk in split_text(seg):
+            body_text = chunk.strip("\n")
+            if not body_text.strip():
+                out.append(chunk)
+                continue
+            body = {"text": body_text, "mode": mode, "platform": platform, "deep": bool(deep)}
+            if lang:
+                body["lang"] = lang
+            job = wait_job(*call("POST", "/humanize", body))
+            result = job.get("text") or ""
+            if no_check:
+                issues = []
+            else:
+                result, issues = guarded(body_text, result, tex)
+            kept.extend(issues)
+            lead = chunk[: len(chunk) - len(chunk.lstrip("\n"))]
+            tail = chunk[len(chunk.rstrip("\n")):]
+            out.append(lead + result + tail)
+            sent += len(body_text)
+            jobs.append(job.get("job_id"))
+            cost += int(job.get("cost") or 0)
+            left = job.get("points_left", left)
+    text = "".join(out) if tex else "".join(out).strip()
+    res = {"mode": mode, "platform": platform, "format": "latex" if tex else "text", "chars_sent": sent,
+           "chunks": len(jobs), "job_ids": jobs, "cost": cost, "points_left": left,
+           "checked": not no_check, "kept_original": kept}
+    if kept:
+        res["note"] = (f"有 {len(kept)} 段改写后数字、公式、引用或 LaTeX 命令对不上，已保留原文（见 kept_original）。"
+                       "可以只把这几段手动改写，或单独再处理一次。")
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(text)
+        res["out"] = os.path.abspath(out_path)
+    else:
+        res["text"] = text
+    print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
 def detect(rest):
     platform, rest = take_opt(rest, "--platform", "zhiwang")
+    force_tex, rest = take_opt(rest, "--tex", False, flag=True)
     if platform not in DETECT_PLATFORMS:
         fail(f"--platform 只能是 {', '.join(sorted(DETECT_PLATFORMS))}")
-    text = read_text(rest).strip()
-    if not text:
+    raw = read_text(rest)
+    if not raw.strip():
         fail("文本为空")
+    tex = force_tex or looks_like_tex(raw, rest[0] if rest else None)
+    text = "\n\n".join(s.strip() for prose, s in tex_segments(raw) if prose and s.strip()) if tex else raw.strip()
     paragraphs, cost, left, weighted, total = [], 0, None, 0.0, 0
     for chunk in split_text(text):
         body_text = chunk.strip("\n")
@@ -348,7 +552,8 @@ def detect(rest):
             total += n
         cost += int(res.get("cost") or 0)
         left = res.get("points_left", left)
-    print(json.dumps({"platform": platform, "ai_rate": round(weighted / total, 4) if total else 0,
+    print(json.dumps({"platform": platform, "format": "latex" if tex else "text",
+                      "ai_rate": round(weighted / total, 4) if total else 0,
                       "paragraphs": paragraphs, "cost": cost, "points_left": left},
                      ensure_ascii=False, indent=2))
 

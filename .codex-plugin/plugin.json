@@ -1,6 +1,6 @@
 {
   "name": "speedai-jiangai",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "SpeedAI 降AI率与AIGC检测：论文降 AIGC、降重、润色与 AIGC 检测，技能 + SpeedAI 连接器（用 speedai.com 账号授权，不用复制 Key）",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",

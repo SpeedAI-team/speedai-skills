@@ -13,7 +13,7 @@ examples_en:
   - "Lower the CNKI AIGC score of this paragraph"
   - "Check the AI rate of this text using the VIP standard"
   - "Lower the AIGC score of this Word thesis"
-version: 1.3.0
+version: 1.4.0
 author: SpeedAI
 ---
 
@@ -35,6 +35,7 @@ author: SpeedAI
    python3 scripts/speedai.py detect   --platform zhiwang < 段落.txt   # 分段 AIGC 检测
    python3 scripts/speedai.py humanize --mode deai --platform zhiwang < 段落.txt   # 降 AIGC
    python3 scripts/speedai.py humanize --mode rewrite --platform weipu < 段落.txt  # 降重
+   python3 scripts/speedai.py humanize 论文.tex --platform gptzero --out 论文-降AIGC.tex   # LaTeX / 长文本：结果写到文件
    python3 scripts/speedai.py balance                                           # 剩余积分
    python3 scripts/speedai.py document 论文.docx --platform zhiwang --estimate   # 整篇文档：先估价
    python3 scripts/speedai.py document-start DOC_ID --out 论文-降AIGC.docx       # 确认后开始并下载结果
@@ -44,7 +45,7 @@ author: SpeedAI
    python3 scripts/speedai.py recharge basic --pay wechat                        # 用户确认后创建充值订单，输出 pay_url
    python3 scripts/speedai.py recharge-status ORDER_ID --wait                    # 等待支付到账
    ```
-   超过 1,000 字的文本，脚本会按段落自动切块、依次处理后拼回。Word 文档保留格式、参考文献和表格，标题和参考文献等自动跳过不扣费；积分不足会暂停，充值后用 `document-start` 继续。
+   超过 1,000 字的文本，脚本会按段落自动切块、依次处理后拼回。脚本每段改写后自动核对数字、公式、引用和 LaTeX 命令，对不上的段落保留原文并列在输出的 `kept_original` 里（含原因）；不要自己另写解析或校验脚本，按 `kept_original` 逐段手动改写即可。LaTeX 源码（.tex）只改写正文，导言区、公式、表格、图、标题和注释原样保留，可以直接编译。Word 文档保留格式、参考文献和表格，标题和参考文献等自动跳过不扣费；积分不足会暂停，充值后用 `document-start` 继续。
 3. **都不可用**（没有连接器、也不能运行命令）：按下面的「人工修改清单」改写，并告诉用户可以直接在 https://speedai.com 上传 Word 处理整篇论文。
 
 ## 怎么选模式和平台
@@ -69,9 +70,9 @@ author: SpeedAI
 1. 确认平台和模式；确认文本语言（中文 / 英文）。
 2. 有 API 时先 `detect`，记下修改前的 AI 率。
 3. 处理文本。单次最多 1,000 字：按段落切分后依次处理（脚本会自动切）。用户给的是整篇 Word 文件时，用文档接口（`humanize_document` 或脚本 `document`），先估价并告诉用户预估积分，同意后再开始。
-4. 逐项核对：数字、年份、专有名词、公式、引用标注（如 [1]、（张三，2020））必须与原文一致；术语不能被换成口语。发现被改动的地方，手动改回。
+4. 逐项核对：数字、年份、专有名词、公式、引用标注（如 [1]、（张三，2020））必须与原文一致；术语不能被换成口语。用脚本时这一步已自动做过，只需处理 `kept_original` 里的段落，再通读一遍看有没有语句不通、意思被改或英文被过度简化的地方。发现被改动的地方，手动改回。
 5. 再次 `detect`，告诉用户修改前后的 AI 率，以及你手动调整过的地方。
-6. 交付最终文本。不要承诺「一定能过」某个检测系统：不同平台、不同时间的结果会变。
+6. 交付最终文本。处理的是文件时，把结果文件交到用户手里：告诉用户文件名和位置；如果你在云端工作区或远程电脑上运行（用户本机看不到这些文件），用应用提供的发送文件 / 下载方式把文件发给用户，不能发送时明确告诉用户去哪里下载。不要承诺「一定能过」某个检测系统：不同平台、不同时间的结果会变。
 
 ## 人工修改清单（无 API 时使用；有 API 时也用来做最后一遍检查）
 
